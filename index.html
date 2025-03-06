@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tracker de Temps</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+    }
+
+    body {
+      background-color: #f5f5f7;
+      height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .container {
+      background-color: white;
+      width: 520px;
+      height: 380px;
+      border-radius: 10px;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+      padding: 30px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    h1 {
+      font-size: 24px;
+      font-weight: 600;
+      margin-bottom: 20px;
+      color: #333;
+    }
+
+    .timer-container {
+      text-align: center;
+    }
+
+    .timer-container p {
+      font-size: 16px;
+      color: #666;
+      margin-bottom: 10px;
+    }
+
+    .timer {
+      font-size: 48px;
+      font-weight: 500;
+      font-family: monospace;
+      background-color: #f9f9f9;
+      padding: 15px 40px;
+      border-radius: 8px;
+      color: #333;
+      border: 1px solid #eaeaea;
+      margin-bottom: 20px;
+    }
+    
+    .date-selector {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-top: 10px;
+      margin-bottom: 15px;
+    }
+    
+    .date-selector select {
+      padding: 5px 10px;
+      border-radius: 5px;
+      border: 1px solid #ddd;
+      background-color: #f9f9f9;
+      font-size: 14px;
+    }
+
+    .buttons-container {
+      display: flex;
+      gap: 15px;
+      margin-top: 10px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .btn {
+      width: 115px;
+      height: 50px;
+      border-radius: 10px;
+      border: none;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      color: white;
+    }
+
+    .start-btn {
+      background-color: #34c759;
+    }
+
+    .start-btn:hover {
+      background-color: #2db04d;
+    }
+
+    .pause-btn {
+      background-color: #ffcc00;
+      color: #333;
+    }
+    
+    .pause-btn:hover {
+      background-color: #e6b800;
+    }
+    
+    .resume-btn {
+      background-color: #007aff;
+    }
+    
+    .resume-btn:hover {
+      background-color: #0066cc;
+    }
+
+    .stop-btn {
+      background-color: #ff3b30;
+    }
+
+    .stop-btn:hover {
+      background-color: #e0352b;
+    }
+
+    .btn:disabled {
+      background-color: #cccccc;
+      cursor: not-allowed;
+      color: #888;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Tracker de Temps</h1>
+    
+    <div class="timer-container">
+      <p>Temps travaillé</p>
+      <div class="timer" id="timer">00:00:00</div>
+      
+      <div class="date-selector">
+        <select id="date-select">
+          <!-- Les dates seront ajoutées dynamiquement -->
+        </select>
+      </div>
+    </div>
+    
+    <div class="buttons-container">
+      <button id="start-btn" class="btn start-btn">Commencer</button>
+      <button id="pause-btn" class="btn pause-btn" disabled>Pause</button>
+      <button id="resume-btn" class="btn resume-btn" disabled>Reprendre</button>
+      <button id="stop-btn" class="btn stop-btn" disabled>Terminer</button>
+    </div>
+  </div>
+
+  <script>
+    // Éléments DOM
+    const startBtn = document.getElementById('start-btn');
+    const pauseBtn = document.getElementById('pause-btn');
+    const resumeBtn = document.getElementById('resume-btn');
+    const stopBtn = document.getElementById('stop-btn');
+    const timerDisplay = document.getElementById('timer');
+    const dateSelect = document.getElementById('date-select');
+
+    // Variables pour le suivi du temps
+    let isTracking = false;
+    let isPaused = false;
+    let startTime = null;
+    let pauseTime = null;
+    let totalPauseDuration = 0;
+    let timerInterval = null;
+    let currentSessionSeconds = 0;
+    let todaySeconds = 0;
+    let selectedDate = new Date().toISOString().split('T')[0]; // Format YYYY-MM-DD
+
+    // Formater une date pour l'affichage
+    function formatDateForDisplay(dateString) {
+      const date = new Date(dateString);
+      return date.toLocaleDateString('fr-FR', { 
+        day: '2-digit', 
+        month: '2-digit',
+        year: 'numeric' 
+      });
+    }
+
+    // Obtenir la date du jour au format YYYY-MM-DD
+    function getTodayDateString() {
+      return new Date().toISOString().split('T')[0];
+    }
+
+    // Charger les dates disponibles dans le sélecteur
+    function loadAvailableDates() {
+      const timeData = localStorage.getItem('timeTrackerData');
+      if (!timeData) return;
+      
+      const data = JSON.parse(timeData);
+      const dates = Object.keys(data).sort().reverse(); // Trier par date (récent en premier)
+      
+      // Vider le sélecteur
+      dateSelect.innerHTML = '';
+      
+      // Ajouter les dates disponibles
+      dates.forEach(date => {
+        const option = document.createElement('option');
+        option.value = date;
+        option.textContent = formatDateForDisplay(date);
+        
+        // Sélectionner la date d'aujourd'hui par défaut
+        if (date === getTodayDateString()) {
+          option.selected = true;
+          selectedDate = date;
+        }
+        
+        dateSelect.appendChild(option);
+      });
+      
+      // Si aucune date n'existe encore pour aujourd'hui, l'ajouter
+      if (!dates.includes(getTodayDateString())) {
+        const option = document.createElement('option');
+        option.value = getTodayDateString();
+        option.textContent = formatDateForDisplay(getTodayDateString());
+        option.selected = true;
+        dateSelect.insertBefore(option, dateSelect.firstChild);
+      }
+    }
+
+    // Charger les sessions pour la date sélectionnée
+    function loadSessionsForDate(dateString) {
+      const timeData = localStorage.getItem('timeTrackerData');
+      if (!timeData) return 0;
+      
+      const data = JSON.parse(timeData);
+      const dayData = data[dateString];
+      
+      if (!dayData) return 0;
+      
+      return dayData.totalSeconds || 0;
+    }
+
+    // Sauvegarder les données de session
+    function saveSessionData() {
+      const timeData = localStorage.getItem('timeTrackerData');
+      const data = timeData ? JSON.parse(timeData) : {};
+      
+      const today = getTodayDateString();
+      
+      // Initialiser les données pour aujourd'hui si nécessaire
+      if (!data[today]) {
+        data[today] = {
+          totalSeconds: 0,
+          sessions: []
+        };
+      }
+      
+      // Mettre à jour les données pour aujourd'hui
+      data[today].totalSeconds = todaySeconds;
+      
+      // Sauvegarder dans le localStorage
+      localStorage.setItem('timeTrackerData', JSON.stringify(data));
+      
+      // Mettre à jour le sélecteur de dates
+      loadAvailableDates();
+    }
+
+    // Formater les secondes en HH:MM:SS
+    function formatTime(seconds) {
+      const hours = Math.floor(seconds / 3600);
+      const minutes = Math.floor((seconds % 3600) / 60);
+      const secs = Math.floor(seconds % 60);
+      
+      return [
+        hours.toString().padStart(2, '0'),
+        minutes.toString().padStart(2, '0'),
+        secs.toString().padStart(2, '0')
+      ].join(':');
+    }
+
+    // Mettre à jour l'affichage du timer
+    function updateTimerDisplay() {
+      let displaySeconds = todaySeconds;
+      
+      // Si on est en train de tracker, ajouter le temps de la session en cours
+      if (isTracking && !isPaused) {
+        const currentTime = new Date();
+        let sessionDuration = (currentTime - startTime) / 1000;
+        
+        // Soustraire le temps total des pauses
+        sessionDuration -= totalPauseDuration;
+        
+        displaySeconds += sessionDuration;
+      }
+      
+      timerDisplay.textContent = formatTime(displaySeconds);
+    }
+
+    // Commencer à tracker le temps
+    function startTracking() {
+      if (isTracking) return;
+      
+      // Si on n'est pas sur la date d'aujourd'hui, revenir à aujourd'hui
+      if (selectedDate !== getTodayDateString()) {
+        selectedDate = getTodayDateString();
+        todaySeconds = loadSessionsForDate(selectedDate);
+        
+        // Mettre à jour le sélecteur
+        for (let i = 0; i < dateSelect.options.length; i++) {
+          if (dateSelect.options[i].value === selectedDate) {
+            dateSelect.selectedIndex = i;
+            break;
+          }
+        }
+      }
+      
+      isTracking = true;
+      isPaused = false;
+      startTime = new Date();
+      totalPauseDuration = 0;
+      currentSessionSeconds = 0;
+      
+      // Mettre à jour l'interface
+      startBtn.disabled = true;
+      pauseBtn.disabled = false;
+      resumeBtn.disabled = true;
+      stopBtn.disabled = false;
+      dateSelect.disabled = true;
+      
+      // Démarrer le timer
+      timerInterval = setInterval(updateTimerDisplay, 1000);
+    }
+
+    // Mettre en pause le tracker
+    function pauseTracking() {
+      if (!isTracking || isPaused) return;
+      
+      isPaused = true;
+      pauseTime = new Date();
+      
+      // Arrêter le timer
+      clearInterval(timerInterval);
+      
+      // Mettre à jour l'interface
+      pauseBtn.disabled = true;
+      resumeBtn.disabled = false;
+    }
+
+    // Reprendre le tracking après une pause
+    function resumeTracking() {
+      if (!isTracking || !isPaused) return;
+      
+      // Calculer la durée de la pause
+      const pauseDuration = (new Date() - pauseTime) / 1000;
+      totalPauseDuration += pauseDuration;
+      
+      isPaused = false;
+      
+      // Mettre à jour l'interface
+      pauseBtn.disabled = false;
+      resumeBtn.disabled = true;
+      
+      // Redémarrer le timer
+      timerInterval = setInterval(updateTimerDisplay, 1000);
+    }
+
+    // Arrêter de tracker le temps
+    function stopTracking() {
+      if (!isTracking) return;
+      
+      // Arrêter le timer
+      clearInterval(timerInterval);
+      
+      const endTime = new Date();
+      let sessionDuration = 0;
+      
+      if (isPaused) {
+        // Si on termine en étant en pause, calculer jusqu'au moment de la pause
+        sessionDuration = (pauseTime - startTime) / 1000 - totalPauseDuration;
+      } else {
+        // Sinon calculer jusqu'à maintenant
+        sessionDuration = (endTime - startTime) / 1000 - totalPauseDuration;
+      }
+      
+      // Mettre à jour le temps total
+      todaySeconds += sessionDuration;
+      
+      // Sauvegarder la session
+      const timeData = localStorage.getItem('timeTrackerData');
+      const data = timeData ? JSON.parse(timeData) : {};
+      
+      const today = getTodayDateString();
+      
+      // Initialiser les données pour aujourd'hui si nécessaire
+      if (!data[today]) {
+        data[today] = {
+          totalSeconds: 0,
+          sessions: []
+        };
+      }
+      
+      // Ajouter la session
+      data[today].sessions.push({
+        startTime: startTime.toISOString(),
+        endTime: endTime.toISOString(),
+        duration: sessionDuration,
+        pauses: totalPauseDuration
+      });
+      
+      // Mettre à jour le total
+      data[today].totalSeconds = todaySeconds;
+      
+      // Sauvegarder dans le localStorage
+      localStorage.setItem('timeTrackerData', JSON.stringify(data));
+      
+      // Réinitialiser l'état
+      isTracking = false;
+      isPaused = false;
+      startTime = null;
+      pauseTime = null;
+      totalPauseDuration = 0;
+      
+      // Mettre à jour l'interface
+      updateTimerDisplay();
+      startBtn.disabled = false;
+      pauseBtn.disabled = true;
+      resumeBtn.disabled = true;
+      stopBtn.disabled = true;
+      dateSelect.disabled = false;
+      
+      // Mettre à jour le sélecteur de dates
+      loadAvailableDates();
+    }
+
+    // Changer la date sélectionnée
+    function changeSelectedDate() {
+      selectedDate = dateSelect.value;
+      todaySeconds = loadSessionsForDate(selectedDate);
+      updateTimerDisplay();
+      
+      // Désactiver le bouton "Commencer" si on n'est pas sur la date d'aujourd'hui
+      startBtn.disabled = selectedDate !== getTodayDateString();
+    }
+
+    // Initialisation
+    document.addEventListener('DOMContentLoaded', () => {
+      // Initialiser le stockage local s'il n'existe pas encore
+      const timeData = localStorage.getItem('timeTrackerData');
+      if (!timeData) {
+        const today = getTodayDateString();
+        const initialData = {
+          [today]: {
+            totalSeconds: 0,
+            sessions: []
+          }
+        };
+        localStorage.setItem('timeTrackerData', JSON.stringify(initialData));
+      }
+      
+      // Charger les dates disponibles
+      loadAvailableDates();
+      
+      // Charger les données pour la date sélectionnée
+      todaySeconds = loadSessionsForDate(selectedDate);
+      updateTimerDisplay();
+      
+      // Désactiver le bouton "Commencer" si on n'est pas sur la date d'aujourd'hui
+      startBtn.disabled = selectedDate !== getTodayDateString();
+      
+      // Événements des boutons
+      startBtn.addEventListener('click', startTracking);
+      pauseBtn.addEventListener('click', pauseTracking);
+      resumeBtn.addEventListener('click', resumeTracking);
+      stopBtn.addEventListener('click', stopTracking);
+      dateSelect.addEventListener('change', changeSelectedDate);
+    });
+  </script>
+</body>
+</html>
